@@ -39,107 +39,128 @@
   </table>
 
   <script>
-    const state = { base: 'GBP', rates: {}, data: [] };
+   
+<script>
+  // Keep app state here
+  const state = { base: 'GBP', rates: {}, data: [] };
 
-    async function load() {
-      // 2) Load YOUR filenames exactly as they are in the repo (case‑sensitive)
-      const [pricesText, ratesJson] = await Promise.all([
-        fetch('prprice-list.csv').then(r => {
-          if (!r.ok) throw new Error('Could not load prprice-list.csv');
-          return r.text();
-        }),
-        fetch('Createrates.json').then(r => {
-          if (!r.ok) throw new Error('Could not load Createrates.json');
-          return r.json();
-        })
-      ]);
+  // Pretty number formatting (e.g., 2 decimals, with thousands separators)
+  function fmt(n, decimals = 2) {
+    return Number(n).toLocaleString(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    });
+  }
 
-      // 3) Initialise state
-      state.base  = ratesJson.base  || 'GBP';
-      state.rates = ratesJson.rates || { GBP: 1 };
-      state.data  = csvToJson(pricesText);
+  // Load CSV + JSON (your filenames are case-sensitive and correct)
+  async function load() {
+    const [pricesText, ratesJson] = await Promise.all([
+      fetch('prprice-list.csv').then(r => {
+        if (!r.ok) throw new Error('Could not load prprice-list.csv');
+        return r.text();
+      }),
+      fetch('Createrates.json').then(r => {
+        if (!r.ok) throw new Error('Could not load Createrates.json');
+        return r.json();
+      })
+    ]);
 
-      initUI();
-      render();
+    // Initialise state
+    state.base  = ratesJson.base  || 'GBP';
+    state.rates = ratesJson.rates || { GBP: 1 };
+    state.data  = csvToJson(pricesText);
+
+    // Optional: if you add "date" in Createrates.json, show it under the header
+    const noteEl = document.querySelector('.note');
+    if (ratesJson.date) {
+      noteEl.innerHTML =
+        `Base currency = ${state.base}. Rates are static (from <code>Createrates.json</code>) — last updated <strong>${ratesJson.date}</strong>.`;
     }
 
-    // Minimal CSV parser (works for simple CSV without quoted commas)
-    function csvToJson(csv) {
-      const lines   = csv.trim().split(/\r?\n/);
-      const headers = lines[0].split(',');
-      return lines.slice(1).map(line => {
-        const cols = line.split(',');
-        const row  = {};
-        headers.forEach((h,i) => row[h] = cols[i]);
-        return {
-          ID: row.ID,
-          Name: row.Name,
-          SKU: row.SKU,
-          Price_GBP: parseFloat(row.Price_GBP)
-        };
-      });
-    }
+    initUI();
+    render();
+  }
 
-    function initUI() {
-      // Build currency dropdown from rates.json keys
-      const sel = document.getElementById('currency');
-      sel.innerHTML = Object.keys(state.rates)
-        .map(c => `<option value="${c}">${c}</option>`)
-        .join('');
-      sel.value = 'GBP';
-      sel.addEventListener('change', render);
+  // Minimal CSV parser (works for simple CSVs without quoted commas)
+  function csvToJson(csv) {
+    const lines   = csv.trim().split(/\r?\n/);
+    const headers = lines[0].split(',');
+    return lines.slice(1).map(line => {
+      const cols = line.split(',');
+      const row  = {};
+      headers.forEach((h,i) => row[h] = cols[i]);
+      return {
+        ID: row.ID,
+        Name: row.Name,
+        SKU: row.SKU,
+        Price_GBP: parseFloat(row.Price_GBP)
+      };
+    });
+  }
 
-      // Manual rate override inputs
-      const box = document.getElementById('rateInputs');
-      box.innerHTML = Object.entries(state.rates)
-        .map(([c,r]) => `
-          <label>${c}: <input type="number" step="0.0001" value="${r}" data-cur="${c}" /></label>
-        `).join('');
-      document.getElementById('applyRates').addEventListener('click', () => {
-        document.querySelectorAll('#rateInputs input').forEach(inp => {
-          const cur = inp.dataset.cur;
-          const val = parseFloat(inp.value);
-          if (!isNaN(val)) state.rates[cur] = val;
-        });
-        render();
-      });
+  function initUI() {
+    // Build currency dropdown from JSON keys
+    const sel = document.getElementById('currency');
+    sel.innerHTML = Object.keys(state.rates)
+      .map(c => `<option value="${c}">${c}</option>`)
+      .join('');
+    sel.value = 'GBP';
+    sel.addEventListener('change', render);
 
-      // Download the rendered table for the chosen currency
-      document.getElementById('download').addEventListener('click', () => {
-        const cur  = document.getElementById('currency').value || 'GBP';
-        const rows = state.data.map(r => [
-          r.ID, r.Name, r.SKU,
-          r.Price_GBP.toFixed(2),
-          (r.Price_GBP * (state.rates[cur] || 1)).toFixed(2)
-        ]);
-        const csvOut = ['ID,Name,SKU,GBP,' + cur]
-          .concat(rows.map(x => x.join(',')))
-          .join('\n');
-        const blob = new Blob([csvOut], { type: 'text/csv' });
-        const a    = document.createElement('a');
-        a.href     = URL.createObjectURL(blob);
-        a.download = `price_list_${cur}.csv`;
-        a.click();
-      });
-    }
-
-    function render() {
-      const cur = document.getElementById('currency').value || 'GBP';
-      document.getElementById('dynHead').textContent = `Converted (${cur})`;
-
-      const tbody = document.querySelector('#prices tbody');
-      tbody.innerHTML = state.data.map(r => `
-        <tr>
-          <td>${r.ID}</td>
-          <td>${r.Name}</td>
-          <td>${r.SKU}</td>
-          <td>£${r.Price_GBP.toFixed(2)}</td>
-          <td>${(r.Price_GBP * (state.rates[cur] || 1)).toFixed(2)} ${cur}</td>
-        </tr>
+    // Manual rate override inputs
+    const box = document.getElementById('rateInputs');
+    box.innerHTML = Object.entries(state.rates)
+      .map(([c,r]) => `
+        <label>${c}: <input type="number" step="0.0001" value="${r}" data-cur="${c}" /></label>
       `).join('');
-    }
+    document.getElementById('applyRates').addEventListener('click', () => {
+      document.querySelectorAll('#rateInputs input').forEach(inp => {
+        const cur = inp.dataset.cur;
+        const val = parseFloat(inp.value);
+        if (!isNaN(val)) state.rates[cur] = val;
+      });
+      render();
+    });
 
-    load();
+    // Download the rendered table as CSV (formatted values)
+    document.getElementById('download').addEventListener('click', () => {
+      const cur  = document.getElementById('currency').value || 'GBP';
+      const rows = state.data.map(r => [
+        r.ID, r.Name, r.SKU,
+        fmt(r.Price_GBP),
+        fmt(r.Price_GBP * (state.rates[cur] || 1))
+      ]);
+      const csvOut = ['ID,Name,SKU,GBP,' + cur]
+        .concat(rows.map(x => x.join(',')))
+        .join('\n');
+      const blob = new Blob([csvOut], { type: 'text/csv' });
+      const a    = document.createElement('a');
+      a.href     = URL.createObjectURL(blob);
+      a.download = `price_list_${cur}.csv`;
+      a.click();
+    });
+  }
+
+  function render() {
+    const cur = document.getElementById('currency').value || 'GBP';
+    document.getElementById('dynHead').textContent = `Converted (${cur})`;
+
+    const tbody = document.querySelector('#prices tbody');
+    tbody.innerHTML = state.data.map(r => `
+      <tr>
+        <td>${r.ID}</td>
+        <td>${r.Name}</td>
+        <td>${r.SKU}</td>
+        <td>£${fmt(r.Price_GBP)}</td>
+        <td>${fmt(r.Price_GBP * (state.rates[cur] || 1))} ${cur}</td>
+      </tr>
+    `).join('');
+  }
+
+  // Kick things off
+  load();
+</script>
+
   </script>
 </body>
 </html>
