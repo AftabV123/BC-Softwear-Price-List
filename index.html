@@ -1,63 +1,26 @@
-const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.csv';
-
-<script>
-  async function showCsvFetchStatus() {
-    try {
-      const r = await fetch(CSV_FILE, { cache: 'no-store' });
-      const msg = `Debug: GET ${CSV_FILE} → ${r.status}`;
-      console.log(msg);
-      const dbg = document.createElement('div');
-      dbg.style.cssText = 'margin:8px 0;color:#666;font-size:.9rem';
-      dbg.textContent = msg + (r.ok ? ' (OK)' : ' (Check file path/name)');
-      document.querySelector('header').appendChild(dbg);
-    } catch (e) {
-      console.error('Debug fetch error:', e);
-    }
-  }
-</script>
-
-
-<script>
-  async function showCsvFetchStatus() {
-    try {
-      const url = new URL(location.href);
-      const base = url.origin + url.pathname.replace(/\/$/, '');
-      const testUrl = base + '/' + CSV_FILE;
-      const r = await fetch(testUrl);
-      const msg = `Debug: GET ${testUrl} → ${r.status}`;
-      console.log(msg);
-      const dbg = document.createElement('div');
-      dbg.style.cssText = 'margin:8px 0;color:#666;font-size:.9rem';
-      dbg.textContent = msg + (r.ok ? ' (OK)' : ' (Check file path/name)');
-      document.querySelector('header').appendChild(dbg);
-    } catch (e) {
-      console.error('Debug fetch error:', e);
-    }
-  }
-</script>
 
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>BC SoftWear — Customer Price List</title>
+  <title>BC SoftWear — Customer Price List (Fresh)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Public multi-currency customer price list with VAT-inclusive display, daily FX conversion, and tiered pricing columns.">
+  <meta name="description" content="Public multi-currency customer price list with VAT toggle and tiered pricing columns.">
   styles.css
   <!-- Robust CSV parser (Papa Parse) -->
   https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js</script>
   <style>
-    /* table tweaks for wide column layout */
     .table-wrap { overflow-x: auto; }
-    th.qty,  td.qty  { text-align: center; width: 80px; }
-    th.price,td.price{ text-align: right; }
+    th.qty,  td.qty  { text-align: center; width: 90px; }
+    th.price,td.price{ text-align: right;  width: 120px; }
     .muted { color:#666; font-size:.9rem; }
+    header { display:grid; gap:8px; margin-bottom:12px; }
+    .controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   </style>
 </head>
 <body>
   <header>
     <h1>BC SoftWear — Customer Price List</h1>
-
     <div class="controls" role="region" aria-label="Price controls">
       <label for="currency">Currency:</label>
       <select id="currency" aria-label="Select currency">
@@ -72,11 +35,11 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
 
       <label for="vatMode">Price mode:</label>
       <select id="vatMode" aria-label="Select VAT display mode">
-        <option value="gross" selected>VAT-inclusive (recommended)</option>
+        <option value="gross" selected>VAT-inclusive</option>
         <option value="net">Ex-VAT (B2B)</option>
       </select>
 
-      <input id="search" type="search" placeholder="Search SKU or name" aria-label="Search products">
+      <input id="search" type="search" placeholder="Search SKU or product" aria-label="Search products">
       <span id="rateInfo" class="muted"></span>
     </div>
   </header>
@@ -88,12 +51,9 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
           <tr>
             <th>SKU</th>
             <th>Product</th>
-            <th class="qty">Qty 1</th>
-            <th class="price">Price 1</th>
-            <th class="qty">Qty 2</th>
-            <th class="price">Price 2</th>
-            <th class="qty">Qty 3</th>
-            <th class="price">Price 3</th>
+            <th class="qty">Qty 1</th><th class="price">Price 1</th>
+            <th class="qty">Qty 2</th><th class="price">Price 2</th>
+            <th class="qty">Qty 3</th><th class="price">Price 3</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -101,11 +61,11 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
     </div>
 
     <details class="notes">
-      <summary>Notes & Disclaimers</summary>
+      <summary>Notes</summary>
       <ul>
-        <li>FX conversion uses the latest daily ECB reference rate (via Frankfurter). Rates update daily and are indicative, not tradable quotes.</li>
-        <li>An FX buffer may be applied (+2% by default) to cover card/FX spreads.</li>
-        <li>For UK consumer display, VAT-inclusive totals should be shown when inviting purchase.</li>
+        <li>FX conversion uses daily reference rates (Frankfurter/ECB). Prices are indicative, not tradable quotes.</li>
+        <li>VAT toggle switches between VAT-inclusive and Ex-VAT.</li>
+        <li>If no data appears, see the grey debug line under the header and the browser console (F12).</li>
       </ul>
     </details>
   </main>
@@ -116,9 +76,9 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
 
   <script>
     // === CONFIG ===
-    const CSV_FILE   = 'price-list.csv';      // CSV in same folder as index.html
-    const VAT_RATE   = 0.20;                  // UK standard VAT (change if needed)
-    const FX_BUFFER  = 0.02;                  // +2% buffer for spreads/fees
+    const CSV_FILE   = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.csv'; // absolute path for reliability
+    const VAT_RATE   = 0.20;       // UK standard VAT
+    const FX_BUFFER  = 0.02;       // +2% buffer to cover card/FX spreads
     const DECIMALS   = { GBP: 2, EUR: 2, USD: 2, AUD: 2, CAD: 2, SGD: 2, JPY: 0 };
 
     const currencySelect = document.getElementById('currency');
@@ -146,25 +106,40 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
       return Number.isFinite(n) ? n : NaN;
     };
 
-    // --- Build products with fuzzy header matching ---
+    // --- Debug: show CSV fetch status visibly on the page ---
+    async function showCsvFetchStatus() {
+      try {
+        const r = await fetch(CSV_FILE, { cache: 'no-store' });
+        const msg = `Debug: GET ${CSV_FILE} → ${r.status}`;
+        console.log(msg);
+        const dbg = document.createElement('div');
+        dbg.style.cssText = 'margin:6px 0;color:#666;font-size:.9rem';
+        dbg.textContent = msg + (r.ok ? ' (OK)' : ' (Check file path/name)');
+        document.querySelector('header').appendChild(dbg);
+      } catch (e) {
+        console.error('Debug fetch error:', e);
+      }
+    }
+
+    // --- Build products (fuzzy header matching) ---
     function buildProductsFromRows(rows) {
       if (!rows.length) return [];
 
       const cols = Object.keys(rows[0] || {});
-      const findCol = (...candidates) => {
-        const targets = candidates.map(norm);
+      const findCol = (...cand) => {
+        const targets = cand.map(norm);
         const match = cols.find(c => targets.includes(norm(c)));
         return match ?? null;
       };
 
       const COL_SKU   = findCol('sku');
       const COL_NAME  = findCol('productname','product','name');
-      const COL_Q1    = findCol('qtyband1','qtyband_1','qty1','qtybandone','qtyband 1');
-      const COL_P1    = findCol('price1','unitprice1','price 1');
-      const COL_Q2    = findCol('qtyband2','qtyband_2','qty2','qtybandtwo','qtyband 2');
-      const COL_P2    = findCol('price2','unitprice2','price 2');
-      const COL_Q3    = findCol('qtyband3','qtyband_3','qty3','qtybandthree','qtyband 3');
-      const COL_P3    = findCol('price3','unitprice3','price 3');
+      const COL_Q1    = findCol('qtyband1','qtyband 1','qtyband_1','qty1');
+      const COL_P1    = findCol('price1','price 1','unitprice1');
+      const COL_Q2    = findCol('qtyband2','qtyband 2','qtyband_2','qty2');
+      const COL_P2    = findCol('price2','price 2','unitprice2');
+      const COL_Q3    = findCol('qtyband3','qtyband 3','qtyband_3','qty3');
+      const COL_P3    = findCol('price3','price 3','unitprice3');
 
       if (!COL_SKU || !COL_NAME) {
         console.error('Missing SKU or Product Name columns.');
@@ -181,7 +156,6 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
         const q2 = num(r[COL_Q2]); const p2 = num(r[COL_P2]);
         const q3 = num(r[COL_Q3]); const p3 = num(r[COL_P3]);
 
-        // at least one price must be present
         if (!Number.isFinite(p1) && !Number.isFinite(p2) && !Number.isFinite(p3)) return;
 
         list.push({
@@ -197,13 +171,13 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
       return list;
     }
 
-    // --- FX with cache & graceful fallback ---
-    function cacheRates(ratesObj) {
-      try { localStorage.setItem('fxRatesGBP', JSON.stringify({ ...ratesObj, cachedAt: new Date().toISOString() })); } catch {}
+    // --- FX: fetch, cache, graceful fallback ---
+    function cacheRates(r) {
+      try { localStorage.setItem('fxGBP', JSON.stringify({ ...r, cachedAt: new Date().toISOString() })); } catch {}
     }
     function getCachedRates() {
       try {
-        const raw = localStorage.getItem('fxRatesGBP'); if (!raw) return null;
+        const raw = localStorage.getItem('fxGBP'); if (!raw) return null;
         const obj = JSON.parse(raw);
         const ageMs = Date.now() - new Date(obj.cachedAt).getTime();
         if (ageMs > 18*60*60*1000) return null; // 18h
@@ -213,7 +187,7 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
     async function loadRates() {
       const cached = getCachedRates();
       if (cached) { fxRates = cached; rateInfo.textContent = `FX base GBP · rate date ${fxRates.date}`; return; }
-      const res = await fetch('https://api.frankfurter.dev/v1/latest?base=GBP');
+      const res = await fetch('https://api.frankfurter.dev/v1/latest?base=GBP', { cache: 'no-store' });
       if (!res.ok) throw new Error('FX request failed ' + res.status);
       fxRates = await res.json();
       cacheRates(fxRates);
@@ -241,7 +215,7 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
 
           const cells = [0,1,2].map(i => {
             const tier = p.tiers[i];
-            const qtyText = tier && tier.qty ? (tier.qty + '+') : (tier ? '—' : '—');
+            const qtyText   = tier && tier.qty ? (tier.qty + '+') : (tier ? '—' : '—');
             const priceText = tier ? money(convertAmount(tier.gbpNet, currency, vatMode), currency) : '—';
             return { qtyText, priceText };
           });
@@ -262,8 +236,11 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
 
     async function init() {
       try {
+        // Show fetch status prominently
+        await showCsvFetchStatus();
+
         // 1) Load CSV via Papa Parse
-        const resp = await fetch(CSV_FILE);
+        const resp = await fetch(CSV_FILE, { cache: 'no-store' });
         if (!resp.ok) throw new Error('Cannot load ' + CSV_FILE + ' (status ' + resp.status + ')');
         const csvText = await resp.text();
 
@@ -273,6 +250,9 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
           transformHeader: h => h.trim()
         });
         if (parsed.errors?.length) console.warn('CSV parse warnings:', parsed.errors);
+
+        // Show detected headers once in console
+        console.log('Headers detected:', Object.keys(parsed.data[0] || {}));
 
         products = buildProductsFromRows(parsed.data);
         if (!products.length) throw new Error('CSV parsed but no products with tier prices found — check headers and F→K columns.');
@@ -300,3 +280,4 @@ const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.
     init();
   </script>
 </body>
+</html>
