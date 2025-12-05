@@ -1,9 +1,21 @@
+const CSV_FILE = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.csv';
 
-// Was:
-const CSV_FILE   = 'price-list.csv';
+<script>
+  async function showCsvFetchStatus() {
+    try {
+      const r = await fetch(CSV_FILE, { cache: 'no-store' });
+      const msg = `Debug: GET ${CSV_FILE} → ${r.status}`;
+      console.log(msg);
+      const dbg = document.createElement('div');
+      dbg.style.cssText = 'margin:8px 0;color:#666;font-size:.9rem';
+      dbg.textContent = msg + (r.ok ? ' (OK)' : ' (Check file path/name)');
+      document.querySelector('header').appendChild(dbg);
+    } catch (e) {
+      console.error('Debug fetch error:', e);
+    }
+  }
+</script>
 
-// Change to (explicit relative path):
-const CSV_FILE   = './price-list.csv';
 
 <script>
   async function showCsvFetchStatus() {
