@@ -2,111 +2,142 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Multi‑Currency Price List</title>
-<style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px}
-  table{border-collapse:collapse;width:100%}
-  th,td{border:1px solid #ddd;padding:8px}
-  th{background:#f6f8fa;text-align:left}
-  .controls{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
-  .rate-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;max-width:680px}
-  .note{color:#666;font-size:.9em}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Multi‑Currency Price List</title>
+
+  <!-- Link to your stylesheet -->
+  styles.css
 </head>
 <body>
-<header>
-  <h1>Multi‑Currency Price List</h1>
-  <p class="note">Base currency = GBP. Rates are static (from <code>rates.json</code>) unless overridden below.</p>
-  <div class="controls">
-    <div>
-      <label for="currency">Display currency:</label>
-      <select id="currency"></select>
+  <header>
+    <h1>Multi‑Currency Price List</h1>
+    <p class="note">
+      Base currency = GBP. Rates are static (from <code>Createrates.json</code>)
+      unless overridden below.
+    </p>
+
+    <div class="controls">
+      <div>
+        <label for="currency">Display currency:</label>
+        <select id="currency"></select>
+      </div>
+      <button id="download">Download current table (CSV)</button>
     </div>
-    <button id="download">Download current table (CSV)</button>
-  </div>
-  <details style="margin-top:10px;">
-    <summary>Override rates manually</summary>
-    <div class="rate-inputs" id="rateInputs"></div>
-    <button id="applyRates">Apply overrides</button>
-  </details>
-</header>
 
-<table id="prices">
-  <thead>
-    <tr><th>ID</th><th>Name</th><th>SKU</th><th>GBP</th><th id="dynHead">Converted</th></tr>
-  </thead>
-  <tbody></tbody>
-</table>
+    <details style="margin-top:10px;">
+      <summary>Override rates manually</summary>
+      <div class="rate-inputs" id="rateInputs"></div>
+      <button id="applyRates">Apply overrides</button>
+    </details>
+  </header>
 
-<script>
-const state = { base:'GBP', rates:{}, data:[] };
+  <table id="prices">
+    <thead>
+      <tr>
+        <th>ID</th><th>Name</th><th>SKU</th><th>GBP</th><th id="dynHead">Converted</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-async function load(){
-  const [prices, rates] = await Promise.all([
-    fetch('prices_gbp.csv').then(r=>r.text()),
-    fetch('rates.json').then(r=>r.json())
-  ]);
-  state.base = rates.base || 'GBP';
-  state.rates = rates.rates || {GBP:1};
-  state.data = csvToJson(prices);
-  initUI(); render();
-}
+  <script>
+    const state = { base:'GBP', rates:{}, data:[] };
 
-function csvToJson(csv){
-  const lines = csv.trim().split(/\r?\n/);
-  const h = lines[0].split(',');
-  return lines.slice(1)
-    .map(line => { const c=line.split(','); const o={}; h.forEach((k,i)=>o[k]=c[i]); return o; })
-    .map(r => ({ ID:r.ID, Name:r.Name, SKU:r.SKU, Price_GBP:parseFloat(r.Price_GBP) }));
-}
+    async function load(){
+      // Use your filenames as provided
+      const [pricesText, ratesJson] = await Promise.all([
+        fetch('prprice-list.csv').then(r => {
+          if (!r.ok) throw new Error('Could not load prprice-list.csv');
+          return r.text();
+        }),
+        fetch('Createrates.json').then(r => {
+          if (!r.ok) throw new Error('Could not load Createrates.json');
+          return r.json();
+        })
+      ]);
 
-function initUI(){
-  const sel=document.getElementById('currency');
-  sel.innerHTML = Object.keys(state.rates).map(c=>`<option value="${c}">${c}</option>`).join('');
-  sel.value='GBP'; sel.addEventListener('change',render);
+      state.base = ratesJson.base || 'GBP';
+      state.rates = ratesJson.rates || { GBP: 1 };
+      state.data  = csvToJson(pricesText);
 
-  const box=document.getElementById('rateInputs');
-  box.innerHTML = Object.entries(state.rates)
-    .map(([c,r])=>`<label>${c}: <input type="number" step="0.0001" value="${r}" data-cur="${c}"/></label>`)
-    .join('');
-  document.getElementById('applyRates').addEventListener('click',()=>{
-    document.querySelectorAll('#rateInputs input').forEach(inp=>{
-      const cur=inp.dataset.cur; const val=parseFloat(inp.value);
-      if(!isNaN(val)) state.rates[cur]=val;
-    });
-    render();
-  });
+      initUI();
+      render();
+    }
 
-  document.getElementById('download').addEventListener('click',()=>{
-    const cur = document.getElementById('currency').value;
-    const rows = state.data.map(r=>[
-      r.ID, r.Name, r.SKU,
-      r.Price_GBP.toFixed(2),
-      (r.Price_GBP*state.rates[cur]).toFixed(2)
-    ]);
-    const csv = ['ID,Name,SKU,GBP,'+cur].concat(rows.map(x=>x.join(','))).join('\n');
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-    a.download=`price_list_${cur}.csv`;
-    a.click();
-  });
-}
+    function csvToJson(csv){
+      const lines = csv.trim().split(/\r?\n/);
+      const headers = lines[0].split(',');
+      return lines.slice(1).map(line => {
+        // naive CSV split; fine for simple/clean CSV (no quoted commas)
+        const cols = line.split(',');
+        const obj = {};
+        headers.forEach((h,i)=> obj[h] = cols[i]);
+        return obj;
+      }).map(r => ({
+        ID: r.ID,
+        Name: r.Name,
+        SKU: r.SKU,
+        Price_GBP: parseFloat(r.Price_GBP)
+      }));
+    }
 
-function render(){
-  const cur=document.getElementById('currency').value || 'GBP';
-  document.getElementById('dynHead').textContent=`Converted (${cur})`;
-  const tb=document.querySelector('#prices tbody');
-  tb.innerHTML = state.data.map(r=>`
-    <tr>
-      <td>${r.ID}</td><td>${r.Name}</td><td>${r.SKU}</td>
-      <td>£${r.Price_GBP.toFixed(2)}</td>
-      <td>${(r.Price_GBP*state.rates[cur]).toFixed(2)} ${cur}</td>
-    </tr>`).join('');
-}
+    function initUI(){
+      const sel = document.getElementById('currency');
+      sel.innerHTML = Object.keys(state.rates)
+        .map(c => `<option value="${c}">${c}</option>`).join('');
+      sel.value = 'GBP';
+      sel.addEventListener('change', render);
 
-load();
-</script>
+      // Build rate override inputs
+      const box = document.getElementById('rateInputs');
+      box.innerHTML = Object.entries(state.rates)
+        .map(([c,r]) => `<label>${c}: <input type="number" step="0.0001" value="${r}" data-cur="${c}" /></label>`)
+        .join('');
+
+      document.getElementById('applyRates').addEventListener('click', () => {
+        document.querySelectorAll('#rateInputs input').forEach(inp => {
+          const cur = inp.dataset.cur;
+          const val = parseFloat(inp.value);
+          if (!isNaN(val)) state.rates[cur] = val;
+        });
+        render();
+      });
+
+      // Download the rendered table with chosen currency
+      document.getElementById('download').addEventListener('click', () => {
+        const cur = document.getElementById('currency').value || 'GBP';
+        const rows = state.data.map(r => [
+          r.ID, r.Name, r.SKU,
+          r.Price_GBP.toFixed(2),
+          (r.Price_GBP * (state.rates[cur] || 1)).toFixed(2)
+        ]);
+        const csv = ['ID,Name,SKU,GBP,' + cur].concat(rows.map(x => x.join(','))).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `price_list_${cur}.csv`;
+        a.click();
+      });
+    }
+
+    function render(){
+      const cur = document.getElementById('currency').value || 'GBP';
+      document.getElementById('dynHead').textContent = `Converted (${cur})`;
+
+      const tbody = document.querySelector('#prices tbody');
+      tbody.innerHTML = state.data.map(r => `
+        <tr>
+          <td>${r.ID}</td>
+          <td>${r.Name}</td>
+          <td>${r.SKU}</td>
+          <td>£${r.Price_GBP.toFixed(2)}</td>
+          <td>${(r.Price_GBP * (state.rates[cur] || 1)).toFixed(2)} ${cur}</td>
+        </tr>
+      `).join('');
+    }
+
+    load();
+  </script>
 </body>
 </html>
