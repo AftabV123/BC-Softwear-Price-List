@@ -1,283 +1,112 @@
 
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>BC SoftWear — Customer Price List (Fresh)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Public multi-currency customer price list with VAT toggle and tiered pricing columns.">
-  styles.css
-  <!-- Robust CSV parser (Papa Parse) -->
-  https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js</script>
-  <style>
-    .table-wrap { overflow-x: auto; }
-    th.qty,  td.qty  { text-align: center; width: 90px; }
-    th.price,td.price{ text-align: right;  width: 120px; }
-    .muted { color:#666; font-size:.9rem; }
-    header { display:grid; gap:8px; margin-bottom:12px; }
-    .controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Multi‑Currency Price List</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:24px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ddd;padding:8px}
+  th{background:#f6f8fa;text-align:left}
+  .controls{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+  .rate-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;max-width:680px}
+  .note{color:#666;font-size:.9em}
+</style>
 </head>
 <body>
-  <header>
-    <h1>BC SoftWear — Customer Price List</h1>
-    <div class="controls" role="region" aria-label="Price controls">
-      <label for="currency">Currency:</label>
-      <select id="currency" aria-label="Select currency">
-        <option value="GBP" selected>GBP £</option>
-        <option value="EUR">EUR €</option>
-        <option value="USD">USD $</option>
-        <option value="JPY">JPY ¥</option>
-        <option value="AUD">AUD $</option>
-        <option value="CAD">CAD $</option>
-        <option value="SGD">SGD $</option>
-      </select>
-
-      <label for="vatMode">Price mode:</label>
-      <select id="vatMode" aria-label="Select VAT display mode">
-        <option value="gross" selected>VAT-inclusive</option>
-        <option value="net">Ex-VAT (B2B)</option>
-      </select>
-
-      <input id="search" type="search" placeholder="Search SKU or product" aria-label="Search products">
-      <span id="rateInfo" class="muted"></span>
+<header>
+  <h1>Multi‑Currency Price List</h1>
+  <p class="note">Base currency = GBP. Rates are static (from <code>rates.json</code>) unless overridden below.</p>
+  <div class="controls">
+    <div>
+      <label for="currency">Display currency:</label>
+      <select id="currency"></select>
     </div>
-  </header>
+    <button id="download">Download current table (CSV)</button>
+  </div>
+  <details style="margin-top:10px;">
+    <summary>Override rates manually</summary>
+    <div class="rate-inputs" id="rateInputs"></div>
+    <button id="applyRates">Apply overrides</button>
+  </details>
+</header>
 
-  <main>
-    <div class="table-wrap">
-      <table id="priceTable" aria-label="Price list">
-        <thead>
-          <tr>
-            <th>SKU</th>
-            <th>Product</th>
-            <th class="qty">Qty 1</th><th class="price">Price 1</th>
-            <th class="qty">Qty 2</th><th class="price">Price 2</th>
-            <th class="qty">Qty 3</th><th class="price">Price 3</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
+<table id="prices">
+  <thead>
+    <tr><th>ID</th><th>Name</th><th>SKU</th><th>GBP</th><th id="dynHead">Converted</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
 
-    <details class="notes">
-      <summary>Notes</summary>
-      <ul>
-        <li>FX conversion uses daily reference rates (Frankfurter/ECB). Prices are indicative, not tradable quotes.</li>
-        <li>VAT toggle switches between VAT-inclusive and Ex-VAT.</li>
-        <li>If no data appears, see the grey debug line under the header and the browser console (F12).</li>
-      </ul>
-    </details>
-  </main>
+<script>
+const state = { base:'GBP', rates:{}, data:[] };
 
-  <footer>
-    <small>© <span id="year"></span> BC SoftWear.</small>
-  </footer>
+async function load(){
+  const [prices, rates] = await Promise.all([
+    fetch('prices_gbp.csv').then(r=>r.text()),
+    fetch('rates.json').then(r=>r.json())
+  ]);
+  state.base = rates.base || 'GBP';
+  state.rates = rates.rates || {GBP:1};
+  state.data = csvToJson(prices);
+  initUI(); render();
+}
 
-  <script>
-    // === CONFIG ===
-    const CSV_FILE   = 'https://aftabv123.github.io/BC-Softwear-Price-List/price-list.csv'; // absolute path for reliability
-    const VAT_RATE   = 0.20;       // UK standard VAT
-    const FX_BUFFER  = 0.02;       // +2% buffer to cover card/FX spreads
-    const DECIMALS   = { GBP: 2, EUR: 2, USD: 2, AUD: 2, CAD: 2, SGD: 2, JPY: 0 };
+function csvToJson(csv){
+  const lines = csv.trim().split(/\r?\n/);
+  const h = lines[0].split(',');
+  return lines.slice(1)
+    .map(line => { const c=line.split(','); const o={}; h.forEach((k,i)=>o[k]=c[i]); return o; })
+    .map(r => ({ ID:r.ID, Name:r.Name, SKU:r.SKU, Price_GBP:parseFloat(r.Price_GBP) }));
+}
 
-    const currencySelect = document.getElementById('currency');
-    const vatSelect      = document.getElementById('vatMode');
-    const searchInput    = document.getElementById('search');
-    const rateInfo       = document.getElementById('rateInfo');
-    const tbody          = document.querySelector('#priceTable tbody');
-    document.getElementById('year').textContent = new Date().getFullYear();
+function initUI(){
+  const sel=document.getElementById('currency');
+  sel.innerHTML = Object.keys(state.rates).map(c=>`<option value="${c}">${c}</option>`).join('');
+  sel.value='GBP'; sel.addEventListener('change',render);
 
-    let fxRates  = null;
-    let products = [];
+  const box=document.getElementById('rateInputs');
+  box.innerHTML = Object.entries(state.rates)
+    .map(([c,r])=>`<label>${c}: <input type="number" step="0.0001" value="${r}" data-cur="${c}"/></label>`)
+    .join('');
+  document.getElementById('applyRates').addEventListener('click',()=>{
+    document.querySelectorAll('#rateInputs input').forEach(inp=>{
+      const cur=inp.dataset.cur; const val=parseFloat(inp.value);
+      if(!isNaN(val)) state.rates[cur]=val;
+    });
+    render();
+  });
 
-    // --- helpers ---
-    const norm = s => (String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''));
-    const money = (amount, ccy) => {
-      const decimals = DECIMALS[ccy] ?? 2;
-      return new Intl.NumberFormat(undefined, {
-        style:'currency', currency: ccy, minimumFractionDigits:decimals, maximumFractionDigits:decimals
-      }).format(amount);
-    };
-    const num = x => {
-      const t = String(x ?? '').trim();
-      if (!t) return NaN;
-      const n = Number(t.replace(/[^0-9.+-]/g,''));
-      return Number.isFinite(n) ? n : NaN;
-    };
+  document.getElementById('download').addEventListener('click',()=>{
+    const cur = document.getElementById('currency').value;
+    const rows = state.data.map(r=>[
+      r.ID, r.Name, r.SKU,
+      r.Price_GBP.toFixed(2),
+      (r.Price_GBP*state.rates[cur]).toFixed(2)
+    ]);
+    const csv = ['ID,Name,SKU,GBP,'+cur].concat(rows.map(x=>x.join(','))).join('\n');
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download=`price_list_${cur}.csv`;
+    a.click();
+  });
+}
 
-    // --- Debug: show CSV fetch status visibly on the page ---
-    async function showCsvFetchStatus() {
-      try {
-        const r = await fetch(CSV_FILE, { cache: 'no-store' });
-        const msg = `Debug: GET ${CSV_FILE} → ${r.status}`;
-        console.log(msg);
-        const dbg = document.createElement('div');
-        dbg.style.cssText = 'margin:6px 0;color:#666;font-size:.9rem';
-        dbg.textContent = msg + (r.ok ? ' (OK)' : ' (Check file path/name)');
-        document.querySelector('header').appendChild(dbg);
-      } catch (e) {
-        console.error('Debug fetch error:', e);
-      }
-    }
+function render(){
+  const cur=document.getElementById('currency').value || 'GBP';
+  document.getElementById('dynHead').textContent=`Converted (${cur})`;
+  const tb=document.querySelector('#prices tbody');
+  tb.innerHTML = state.data.map(r=>`
+    <tr>
+      <td>${r.ID}</td><td>${r.Name}</td><td>${r.SKU}</td>
+      <td>£${r.Price_GBP.toFixed(2)}</td>
+      <td>${(r.Price_GBP*state.rates[cur]).toFixed(2)} ${cur}</td>
+    </tr>`).join('');
+}
 
-    // --- Build products (fuzzy header matching) ---
-    function buildProductsFromRows(rows) {
-      if (!rows.length) return [];
-
-      const cols = Object.keys(rows[0] || {});
-      const findCol = (...cand) => {
-        const targets = cand.map(norm);
-        const match = cols.find(c => targets.includes(norm(c)));
-        return match ?? null;
-      };
-
-      const COL_SKU   = findCol('sku');
-      const COL_NAME  = findCol('productname','product','name');
-      const COL_Q1    = findCol('qtyband1','qtyband 1','qtyband_1','qty1');
-      const COL_P1    = findCol('price1','price 1','unitprice1');
-      const COL_Q2    = findCol('qtyband2','qtyband 2','qtyband_2','qty2');
-      const COL_P2    = findCol('price2','price 2','unitprice2');
-      const COL_Q3    = findCol('qtyband3','qtyband 3','qtyband_3','qty3');
-      const COL_P3    = findCol('price3','price 3','unitprice3');
-
-      if (!COL_SKU || !COL_NAME) {
-        console.error('Missing SKU or Product Name columns.');
-        return [];
-      }
-
-      const list = [];
-      rows.forEach(r => {
-        const sku  = (r[COL_SKU]  || '').trim();
-        const name = (r[COL_NAME] || '').trim();
-        if (!sku || !name) return;
-
-        const q1 = num(r[COL_Q1]); const p1 = num(r[COL_P1]);
-        const q2 = num(r[COL_Q2]); const p2 = num(r[COL_P2]);
-        const q3 = num(r[COL_Q3]); const p3 = num(r[COL_P3]);
-
-        if (!Number.isFinite(p1) && !Number.isFinite(p2) && !Number.isFinite(p3)) return;
-
-        list.push({
-          sku, name,
-          tiers: [
-            Number.isFinite(p1) ? { qty: Number.isFinite(q1) ? q1 : null, gbpNet: p1 } : null,
-            Number.isFinite(p2) ? { qty: Number.isFinite(q2) ? q2 : null, gbpNet: p2 } : null,
-            Number.isFinite(p3) ? { qty: Number.isFinite(q3) ? q3 : null, gbpNet: p3 } : null
-          ]
-        });
-      });
-
-      return list;
-    }
-
-    // --- FX: fetch, cache, graceful fallback ---
-    function cacheRates(r) {
-      try { localStorage.setItem('fxGBP', JSON.stringify({ ...r, cachedAt: new Date().toISOString() })); } catch {}
-    }
-    function getCachedRates() {
-      try {
-        const raw = localStorage.getItem('fxGBP'); if (!raw) return null;
-        const obj = JSON.parse(raw);
-        const ageMs = Date.now() - new Date(obj.cachedAt).getTime();
-        if (ageMs > 18*60*60*1000) return null; // 18h
-        return obj;
-      } catch { return null; }
-    }
-    async function loadRates() {
-      const cached = getCachedRates();
-      if (cached) { fxRates = cached; rateInfo.textContent = `FX base GBP · rate date ${fxRates.date}`; return; }
-      const res = await fetch('https://api.frankfurter.dev/v1/latest?base=GBP', { cache: 'no-store' });
-      if (!res.ok) throw new Error('FX request failed ' + res.status);
-      fxRates = await res.json();
-      cacheRates(fxRates);
-      rateInfo.textContent = `FX base GBP · rate date ${fxRates.date}`;
-    }
-
-    function convertAmount(gbpNet, currency, vatMode) {
-      const rate = currency === 'GBP' ? 1 : fxRates?.rates?.[currency];
-      if (!rate) throw new Error('Missing FX rate for ' + currency);
-      const buffered = rate * (1 + FX_BUFFER);
-      const netTarget = gbpNet * buffered;
-      return vatMode === 'net' ? netTarget : netTarget * (1 + VAT_RATE);
-    }
-
-    function render() {
-      const q        = (searchInput.value || '').trim().toLowerCase();
-      const currency = currencySelect.value;
-      const vatMode  = vatSelect.value;
-
-      tbody.innerHTML = '';
-      products
-        .filter(p => !q || p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
-        .forEach(p => {
-          const tr = document.createElement('tr');
-
-          const cells = [0,1,2].map(i => {
-            const tier = p.tiers[i];
-            const qtyText   = tier && tier.qty ? (tier.qty + '+') : (tier ? '—' : '—');
-            const priceText = tier ? money(convertAmount(tier.gbpNet, currency, vatMode), currency) : '—';
-            return { qtyText, priceText };
-          });
-
-          tr.innerHTML = `
-            <td>${p.sku}</td>
-            <td>${p.name}</td>
-            <td class="qty">${cells[0].qtyText}</td>
-            <td class="price">${cells[0].priceText}</td>
-            <td class="qty">${cells[1].qtyText}</td>
-            <td class="price">${cells[1].priceText}</td>
-            <td class="qty">${cells[2].qtyText}</td>
-            <td class="price">${cells[2].priceText}</td>
-          `;
-          tbody.appendChild(tr);
-        });
-    }
-
-    async function init() {
-      try {
-        // Show fetch status prominently
-        await showCsvFetchStatus();
-
-        // 1) Load CSV via Papa Parse
-        const resp = await fetch(CSV_FILE, { cache: 'no-store' });
-        if (!resp.ok) throw new Error('Cannot load ' + CSV_FILE + ' (status ' + resp.status + ')');
-        const csvText = await resp.text();
-
-        const parsed = Papa.parse(csvText, {
-          header: true,
-          skipEmptyLines: true,
-          transformHeader: h => h.trim()
-        });
-        if (parsed.errors?.length) console.warn('CSV parse warnings:', parsed.errors);
-
-        // Show detected headers once in console
-        console.log('Headers detected:', Object.keys(parsed.data[0] || {}));
-
-        products = buildProductsFromRows(parsed.data);
-        if (!products.length) throw new Error('CSV parsed but no products with tier prices found — check headers and F→K columns.');
-
-        // 2) Load FX (fall back to GBP if FX fails)
-        try { await loadRates(); }
-        catch (fxErr) {
-          console.warn('FX unavailable, falling back to GBP only:', fxErr);
-          currencySelect.value = 'GBP';
-          rateInfo.textContent = 'FX unavailable — showing GBP only';
-        }
-
-        render();
-      } catch (e) {
-        console.error(e);
-        rateInfo.textContent = 'Problem loading CSV or FX — showing nothing';
-        tbody.innerHTML = '<tr><td colspan="8" class="price">No data</td></tr>';
-      }
-    }
-
-    currencySelect.addEventListener('change', render);
-    vatSelect.addEventListener('change', render);
-    searchInput.addEventListener('input', render);
-
-    init();
-  </script>
+load();
+</script>
 </body>
 </html>
