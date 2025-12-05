@@ -5,10 +5,12 @@
   <meta charset="utf-8">
   <title>BC SoftWear — Customer Price List</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Public multi-currency customer price list with VAT-inclusive display and daily FX conversion.">
+  <meta name="description" content="Public multi-currency customer price list with VAT-inclusive display, daily FX conversion, and tiered pricing.">
   styles.css
+  <!-- Robust CSV parser -->
+  <script src="https://cdn.jsdelivr.nete@5.4.1/papaparse.min.js</script>
   <style>
-    /* small additions specific to tiers */
+    /* Tiered pricing visuals */
     .tiers { display: grid; gap: 6px; }
     .tier { display: flex; justify-content: space-between; align-items: baseline; }
     .tier .qty { color:#555; }
@@ -58,10 +60,9 @@
     <details class="notes">
       <summary>Notes & Disclaimers</summary>
       <ul>
-        <li>Prices are converted from GBP using the latest daily reference rate via Frankfurter (ECB). Rates typically update once per working day (~16:00 CET); indicative, not tradable quotes.</li>
-        <li>An FX buffer may be applied (+2% by default) to cover spreads/fees.</li>
-        <li>For UK consumer display, show VAT-inclusive totals where applicable.</li>
-        <li>Prices may change without notice. Rate date/source are shown above.</li>
+        <li>FX conversion uses the latest daily ECB reference rate (via Frankfurter). Rates update daily and are indicative, not tradable quotes.</li>
+        <li>We apply a small FX buffer by default to cover card/FX spreads.</li>
+        <li>For consumer display in the UK, VAT-inclusive totals should be shown when inviting purchase.</li>
       </ul>
     </details>
   </main>
@@ -72,9 +73,9 @@
 
   <script>
     // === CONFIG ===
-    const CSV_FILE   = 'price-list.csv'; // CSV in the same folder as index.html
-    const VAT_RATE   = 0.20;             // UK standard VAT (change if needed)
-    const FX_BUFFER  = 0.02;             // +2% buffer for spreads/fees
+    const CSV_FILE   = 'price-list.csv';      // CSV in same folder as index.html
+    const VAT_RATE   = 0.20;                  // UK standard VAT
+    const FX_BUFFER  = 0.02;                  // +2% buffer for spreads/fees
     const DECIMALS   = { GBP: 2, EUR: 2, USD: 2, AUD: 2, CAD: 2, SGD: 2, JPY: 0 };
 
     const currencySelect = document.getElementById('currency');
@@ -87,96 +88,79 @@
     let fxRates  = null;
     let products = [];
 
-    // -------- CSV parser (robust to blank lines and quotes) --------
-    function parseCSV(text) {
-      const rows = [];
-      let cur = [], val = '', inQuotes = false;
-      for (let i = 0; i < text.length; i++) {
-        const c = text[i], n = text[i+1];
-        if (c === '\ufeff') continue; // strip BOM
-        if (c === '"') {
-          if (inQuotes && n === '"') { val += '"'; i++; }
-          else { inQuotes = !inQuotes; }
-        } else if (c === ',' && !inQuotes) {
-          cur.push(val); val = '';
-        } else if ((c === '\n' || c === '\r') && !inQuotes) {
-          if (val !== '' || cur.length) { cur.push(val); rows.push(cur); }
-          cur = []; val = '';
-          if (c === '\r' && n === '\n') i++;
-        } else { val += c; }
-      }
-      if (val !== '' || cur.length) { cur.push(val); rows.push(cur); }
-      return rows.filter(r => r.some(cell => (cell || '').trim() !== ''));
-    }
-
-    function toNumber(x) {
-      const t = String(x ?? '').trim();
-      if (!t) return NaN;
-      const n = Number(t.replace(/[^0-9.+-]/g, ''));
-      return Number.isFinite(n) ? n : NaN;
-    }
-
-    function formatMoney(amount, ccy) {
+    // --- Helpers ---
+    const norm = s => (String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''));
+    const money = (amount, ccy) => {
       const decimals = DECIMALS[ccy] ?? 2;
       return new Intl.NumberFormat(undefined, {
-        style: 'currency', currency: ccy,
-        minimumFractionDigits: decimals, maximumFractionDigits: decimals
+        style:'currency', currency: ccy, minimumFractionDigits:decimals, maximumFractionDigits:decimals
       }).format(amount);
-    }
+    };
+    const num = x => {
+      const t = String(x ?? '').trim();
+      if (!t) return NaN;
+      const n = Number(t.replace(/[^0-9.+-]/g,''));
+      return Number.isFinite(n) ? n : NaN;
+    };
 
-    function findHeaderIndex(rows) {
-      for (let i = 0; i < rows.length; i++) {
-        const hdr = rows[i].map(h => (h || '').trim());
-        if (hdr.includes('SKU') && hdr.includes('Product Name')) return i;
+    // --- Build products with fuzzy header matching ---
+    function buildProductsFromRows(rows) {
+      if (!rows.length) return [];
+
+      // Find header row (must have SKU & Product Name)
+      let headerIdx = rows.findIndex(r => {
+        const cols = Object.keys(r);
+        return cols.some(c => norm(c)==='sku') && cols.some(c => norm(c)==='productname');
+      });
+      if (headerIdx === -1) headerIdx = 0;
+
+      const hdrRow = rows[headerIdx];
+      const cols = Object.keys(hdrRow);
+
+      // Map needed columns (fuzzy match to tolerate spacing/UTF-8 quirks)
+      const findCol = (...candidates) => {
+        const targets = candidates.map(norm);
+        const match = cols.find(c => targets.includes(norm(c)));
+        return match ?? null;
+      };
+
+      const COL_SKU   = findCol('sku');
+      const COL_NAME  = findCol('productname');
+      const COL_Q1    = findCol('qtyband1','qtyband_1','qty1','qtybandone');
+      const COL_P1    = findCol('price1','unitprice1');
+      const COL_Q2    = findCol('qtyband2','qtyband_2','qty2','qtybandtwo');
+      const COL_P2    = findCol('price2','unitprice2');
+      const COL_Q3    = findCol('qtyband3','qtyband_3','qty3','qtybandthree');
+      const COL_P3    = findCol('price3','unitprice3');
+
+      if (!COL_SKU || !COL_NAME) {
+        console.error('Missing SKU or Product Name columns.');
+        return [];
       }
-      return -1;
-    }
-
-    // Build full tier set for a row (up to three tiers)
-    function extractTiers(row, idx) {
-      const pairs = [
-        { qty: row[idx['Qty Band 1']], price: row[idx['Price 1']] },
-        { qty: row[idx['Qty Band 2']], price: row[idx['Price 2']] },
-        { qty: row[idx['Qty Band 3']], price: row[idx['Price 3']] }
-      ];
-
-      const tiers = [];
-      for (const p of pairs) {
-        const qty   = toNumber(p.qty);
-        const price = toNumber(p.price);
-        if (Number.isFinite(price)) {
-          tiers.push({ qty: Number.isFinite(qty) ? qty : null, gbpNet: price });
-        }
-      }
-      return tiers;
-    }
-
-    function buildProducts(rows) {
-      const headerIndex = findHeaderIndex(rows);
-      if (headerIndex < 0) throw new Error('Header row not found — expected columns: SKU, Product Name');
-
-      const headers = rows[headerIndex].map(h => h.trim());
-      const idx = {}; headers.forEach((h, i) => idx[h] = i);
-
-      const required = ['Product Name', 'SKU', 'Qty Band 1', 'Price 1', 'Qty Band 2', 'Price 2', 'Qty Band 3', 'Price 3'];
-      required.forEach(k => { if (idx[k] == null) console.warn('Missing column', k); });
 
       const list = [];
-      for (let r = headerIndex + 1; r < rows.length; r++) {
-        const row  = rows[r];
-        const sku  = (row[idx['SKU']] || '').trim();
-        const name = (row[idx['Product Name']] || '').trim();
-        if (!sku || !name) continue;
+      rows.forEach(r => {
+        const sku  = (r[COL_SKU]  || '').trim();
+        const name = (r[COL_NAME] || '').trim();
+        if (!sku || !name) return;
 
-        const tiers = extractTiers(row, idx);
-        if (!tiers.length) continue;
+        const tiers = [];
+        const pairs = [
+          { qty: num(r[COL_Q1]), price: num(r[COL_P1]) },
+          { qty: num(r[COL_Q2]), price: num(r[COL_P2]) },
+          { qty: num(r[COL_Q3]), price: num(r[COL_P3]) }
+        ];
+        pairs.forEach(p => {
+          if (Number.isFinite(p.price)) tiers.push({ qty: Number.isFinite(p.qty) ? p.qty : null, gbpNet: p.price });
+        });
 
-        list.push({ sku, name, tiers });
-      }
+        if (tiers.length) list.push({ sku, name, tiers });
+      });
+
       return list;
     }
 
-    // -------- FX: fetch, cache, and graceful fallback --------
+    // --- FX with cache & graceful fallback ---
     function cacheRates(ratesObj) {
       try { localStorage.setItem('fxRatesGBP', JSON.stringify({ ...ratesObj, cachedAt: new Date().toISOString() })); } catch {}
     }
@@ -185,7 +169,7 @@
         const raw = localStorage.getItem('fxRatesGBP'); if (!raw) return null;
         const obj = JSON.parse(raw);
         const ageMs = Date.now() - new Date(obj.cachedAt).getTime();
-        if (ageMs > 18 * 60 * 60 * 1000) return null; // 18h
+        if (ageMs > 18*60*60*1000) return null; // 18h
         return obj;
       } catch { return null; }
     }
@@ -216,19 +200,17 @@
       products
         .filter(p => !q || p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
         .forEach(p => {
-          const tr = document.createElement('tr');
-
-          // Build tier HTML
-          const tiersHtml = p.tiers.map(t => {
+          const tierHTML = p.tiers.map(t => {
             const amt = convertTierAmount(t.gbpNet, currency, vatMode);
             const qtyLabel = t.qty ? `${t.qty}+` : `Tier`;
-            return `<div class="tier"><span class="qty pill">${qtyLabel}</span><span class="amt">${formatMoney(amt, currency)}</span></div>`;
+            return `<div class="tier"><span class="qty pill">${qtyLabel}</span><span class="amt">${money(amt, currency)}</span></div>`;
           }).join('');
 
+          const tr = document.createElement('tr');
           tr.innerHTML = `
             <td>${p.sku}</td>
             <td>${p.name}</td>
-            <td class="num"><div class="tiers">${tiersHtml}</div></td>
+            <td class="num"><div class="tiers">${tierHTML}</div></td>
           `;
           tbody.appendChild(tr);
         });
@@ -236,15 +218,23 @@
 
     async function init() {
       try {
-        // 1) Load CSV
-        const csvRes  = await fetch(CSV_FILE);
-        if (!csvRes.ok) throw new Error('Cannot load ' + CSV_FILE + ' (status ' + csvRes.status + ')');
-        const csvText = await csvRes.text();
-        const rows    = parseCSV(csvText);
-        products      = buildProducts(rows);
-        if (!products.length) throw new Error('CSV parsed but no products — check headers and price columns');
+        // 1) Load CSV via Papa Parse (header-aware, UTF-8 tolerant)
+        const resp = await fetch(CSV_FILE);
+        if (!resp.ok) throw new Error('Cannot load ' + CSV_FILE + ' (status ' + resp.status + ')');
+        const csvText = await resp.text();
 
-        // 2) Load FX (if fails, fall back to GBP only)
+        const parsed = Papa.parse(csvText, {
+          header: true,             // read header names
+          skipEmptyLines: true,     // ignore empty lines
+          transformHeader: h => h.trim(), // trim headers
+        });
+        if (parsed.errors?.length) console.warn('CSV parse warnings:', parsed.errors);
+        const rows = parsed.data;   // array of objects
+
+        products = buildProductsFromRows(rows);
+        if (!products.length) throw new Error('CSV parsed but no products with tier prices found — check headers and F→K columns.');
+
+        // 2) Load FX (fall back to GBP if FX fails)
         try { await loadRates(); }
         catch (fxErr) {
           console.warn('FX unavailable, falling back to GBP only:', fxErr);
