@@ -6,7 +6,7 @@
   <title>BC SoftWear — Customer Price List</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Public multi-currency customer price list with VAT-inclusive display and daily FX conversion.">
-  <tyles.css
+  styles.css
 </head>
 <body>
   <header>
@@ -64,38 +64,35 @@
 
   <script>
     // === CONFIG ===
-    const CSV_FILE = 'price-list.csv';   // your uploaded CSV filename
-    const VAT_RATE = 0.20;               // UK standard VAT (change if needed)
-    const FX_BUFFER = 0.02;              // 2% buffer to cover card/FX spreads
-    const DECIMALS = { GBP: 2, EUR: 2, USD: 2, AUD: 2, CAD: 2, SGD: 2, JPY: 0 };
-    const FRANKFURTER_URL = 'https://api.frankfurter.dev/v1/latest?base=GBP';
+    const CSV_FILE   = 'price-list.csv'; // CSV must be in the same folder as index.html
+    const VAT_RATE   = 0.20;             // UK standard VAT
+    const FX_BUFFER  = 0.02;             // +2% buffer to cover spreads/fees
+    const DECIMALS   = { GBP: 2, EUR: 2, USD: 2, AUD: 2, CAD: 2, SGD: 2, JPY: 0 };
 
-    // === DOM ===
     const currencySelect = document.getElementById('currency');
-    const vatSelect = document.getElementById('vatMode');
-    const searchInput = document.getElementById('search');
-    const rateInfo = document.getElementById('rateInfo');
-    const tbody = document.querySelector('#priceTable tbody');
+    const vatSelect      = document.getElementById('vatMode');
+    const searchInput    = document.getElementById('search');
+    const rateInfo       = document.getElementById('rateInfo');
+    const tbody          = document.querySelector('#priceTable tbody');
     document.getElementById('year').textContent = new Date().getFullYear();
 
-    let rawRows = [];
-    let products = [];   // { sku, name, gbpNet }
-    let fxRates = null;
+    let fxRates  = null;
+    let products = [];
 
-    // --- CSV parsing (handles quotes) ---
+    // -------- CSV parser (robust to blank lines and quotes) --------
     function parseCSV(text) {
       const rows = [];
       let cur = [], val = '', inQuotes = false;
       for (let i = 0; i < text.length; i++) {
-        const c = text[i];
-        const n = text[i+1];
+        const c = text[i], n = text[i+1];
+        if (c === '\ufeff') continue; // strip BOM
         if (c === '"') {
           if (inQuotes && n === '"') { val += '"'; i++; }
           else { inQuotes = !inQuotes; }
         } else if (c === ',' && !inQuotes) {
-          cur.push(val);
-          val = '';
+          cur.push(val); val = '';
         } else if ((c === '\n' || c === '\r') && !inQuotes) {
+          // end of row
           if (val !== '' || cur.length) { cur.push(val); rows.push(cur); }
           cur = []; val = '';
           if (c === '\r' && n === '\n') i++;
@@ -104,12 +101,12 @@
         }
       }
       if (val !== '' || cur.length) { cur.push(val); rows.push(cur); }
-      return rows;
+      // drop leading empty rows
+      return rows.filter(r => r.some(cell => (cell || '').trim() !== ''));
     }
 
     function toNumber(x) {
-      if (x == null) return NaN;
-      const t = String(x).trim();
+      const t = String(x ?? '').trim();
       if (!t) return NaN;
       const n = Number(t.replace(/[^0-9.+-]/g, ''));
       return Number.isFinite(n) ? n : NaN;
@@ -123,7 +120,16 @@
       }).format(amount);
     }
 
-    // Pick a single-unit price per line: prefer Price 1, else Price 2, else Price 3.
+    // -------- find actual header row (handles leading blanks) --------
+    function findHeaderIndex(rows) {
+      for (let i = 0; i < rows.length; i++) {
+        const hdr = rows[i].map(h => (h || '').trim());
+        if (hdr.includes('SKU') && hdr.includes('Product Name')) return i;
+      }
+      return -1;
+    }
+
+    // choose a unit price per product line
     function pickUnitPrice(row, idx) {
       const p1 = toNumber(row[idx['Price 1']]);
       const p2 = toNumber(row[idx['Price 2']]);
@@ -135,27 +141,27 @@
     }
 
     function buildProducts(rows) {
-      const headers = rows[0].map(h => h.trim());
-      const idx = {};
-      headers.forEach((h, i) => idx[h] = i);
+      const headerIndex = findHeaderIndex(rows);
+      if (headerIndex < 0) throw new Error('Header row not found — expected columns: SKU, Product Name');
+
+      const headers = rows[headerIndex].map(h => h.trim());
+      const idx = {}; headers.forEach((h, i) => idx[h] = i);
 
       const required = ['Product Name', 'SKU', 'Price 1', 'Price 2', 'Price 3'];
       required.forEach(k => { if (idx[k] == null) console.warn('Missing column', k); });
 
       const map = new Map(); // sku -> { sku, name, gbpNet }
-      for (let r = 1; r < rows.length; r++) {
+      for (let r = headerIndex + 1; r < rows.length; r++) {
         const row = rows[r];
-        const sku = (row[idx['SKU']] || '').trim();
+        const sku  = (row[idx['SKU']] || '').trim();
         const name = (row[idx['Product Name']] || '').trim();
         if (!sku || !name) continue;
 
         const price = pickUnitPrice(row, idx);
         if (!Number.isFinite(price) || price <= 0) continue;
 
-        if (!map.has(sku)) {
-          map.set(sku, { sku, name, gbpNet: price });
-        } else {
-          // If duplicate SKU appears, keep the lower price (more conservative for public list)
+        if (!map.has(sku)) map.set(sku, { sku, name, gbpNet: price });
+        else {
           const cur = map.get(sku);
           if (price < cur.gbpNet) cur.gbpNet = price;
         }
@@ -163,7 +169,7 @@
       return Array.from(map.values());
     }
 
-    // FX
+    // -------- FX: fetch, cache, and graceful fallback --------
     function cacheRates(ratesObj) {
       try { localStorage.setItem('fxRatesGBP', JSON.stringify({ ...ratesObj, cachedAt: new Date().toISOString() })); } catch {}
     }
@@ -176,14 +182,14 @@
         return obj;
       } catch { return null; }
     }
-
     async function loadRates() {
       const cached = getCachedRates();
-      if (cached) { fxRates = cached; return; }
+      if (cached) { fxRates = cached; rateInfo.textContent = `FX base GBP · rate date ${fxRates.date}`; return; }
       const res = await fetch('https://api.frankfurter.dev/v1/latest?base=GBP');
-      if (!res.ok) throw new Error('FX request failed');
-      fxRates = await res.json();  // { base, date, rates: { EUR:..., ... } }
+      if (!res.ok) throw new Error('FX request failed ' + res.status);
+      fxRates = await res.json();
       cacheRates(fxRates);
+      rateInfo.textContent = `FX base GBP · rate date ${fxRates.date}`;
     }
 
     function computeDisplayPrice(gbpNet, currency, vatMode) {
@@ -195,9 +201,9 @@
     }
 
     function render() {
-      const q = (searchInput.value || '').trim().toLowerCase();
+      const q        = (searchInput.value || '').trim().toLowerCase();
       const currency = currencySelect.value;
-      const vatMode = vatSelect.value;
+      const vatMode  = vatSelect.value;
 
       tbody.innerHTML = '';
       products
@@ -217,20 +223,28 @@
 
     async function init() {
       try {
-        // Load CSV
-        const csvRes = await fetch(CSV_FILE);
-        if (!csvRes.ok) throw new Error('Cannot load price-list.csv');
+        // 1) Load CSV
+        const csvRes  = await fetch(CSV_FILE);
+        if (!csvRes.ok) throw new Error('Cannot load ' + CSV_FILE + ' (status ' + csvRes.status + ')');
         const csvText = await csvRes.text();
-        rawRows = parseCSV(csvText);
-        products = buildProducts(rawRows);
+        const rows    = parseCSV(csvText);
+        products      = buildProducts(rows);
+        if (!products.length) throw new Error('CSV parsed but no products — check headers and price columns');
 
-        // Load FX
-        await loadRates();
-        rateInfo.textContent = `FX base GBP · rate date ${fxRates.date}`;
+        // 2) Load FX (if fails, fall back to GBP only)
+        try {
+          await loadRates();
+        } catch (fxErr) {
+          console.warn('FX unavailable, falling back to GBP only:', fxErr);
+          currencySelect.value = 'GBP';
+          rateInfo.textContent = 'FX unavailable — showing GBP only';
+        }
+
         render();
       } catch (e) {
         console.error(e);
         rateInfo.textContent = 'Problem loading CSV or FX — showing nothing';
+        tbody.innerHTML = '<tr><td colspan="3" class="num">No data</td></tr>';
       }
     }
 
