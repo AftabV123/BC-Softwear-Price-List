@@ -194,3 +194,17 @@
         return `
           <tr>
             <td data-label="ID">${r.ID}</td>
+            <td data-label="Name">${r.Name}</td>
+            <td data-label="SKU">${r.SKU}</td>
+            <td data-label="GBP">£${fmt(r.Price_GBP)}</td>
+            <td data-label="Converted">${fmt(conv)} ${cur}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // ---------------- Kick-off ----------------
+    load();
+  </script>
+</body>
+</html>
