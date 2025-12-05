@@ -7,6 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Public multi-currency customer price list with VAT-inclusive display and daily FX conversion.">
   styles.css
+  <style>
+    /* small additions specific to tiers */
+    .tiers { display: grid; gap: 6px; }
+    .tier { display: flex; justify-content: space-between; align-items: baseline; }
+    .tier .qty { color:#555; }
+    .tier .amt { font-weight:600; }
+    .pill { display:inline-block; padding:2px 8px; border:1px solid #ddd; border-radius:999px; font-size:.85rem; color:#333; background:#fafafa; }
+  </style>
 </head>
 <body>
   <header>
@@ -41,7 +49,7 @@
         <tr>
           <th>SKU</th>
           <th>Product</th>
-          <th class="num">Price</th>
+          <th class="num">Tiered Prices</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -64,9 +72,9 @@
 
   <script>
     // === CONFIG ===
-    const CSV_FILE   = 'price-list.csv'; // CSV must be in the same folder as index.html
-    const VAT_RATE   = 0.20;             // UK standard VAT
-    const FX_BUFFER  = 0.02;             // +2% buffer to cover spreads/fees
+    const CSV_FILE   = 'price-list.csv'; // CSV in the same folder as index.html
+    const VAT_RATE   = 0.20;             // UK standard VAT (change if needed)
+    const FX_BUFFER  = 0.02;             // +2% buffer for spreads/fees
     const DECIMALS   = { GBP: 2, EUR: 2, USD: 2, AUD: 2, CAD: 2, SGD: 2, JPY: 0 };
 
     const currencySelect = document.getElementById('currency');
@@ -92,16 +100,12 @@
         } else if (c === ',' && !inQuotes) {
           cur.push(val); val = '';
         } else if ((c === '\n' || c === '\r') && !inQuotes) {
-          // end of row
           if (val !== '' || cur.length) { cur.push(val); rows.push(cur); }
           cur = []; val = '';
           if (c === '\r' && n === '\n') i++;
-        } else {
-          val += c;
-        }
+        } else { val += c; }
       }
       if (val !== '' || cur.length) { cur.push(val); rows.push(cur); }
-      // drop leading empty rows
       return rows.filter(r => r.some(cell => (cell || '').trim() !== ''));
     }
 
@@ -120,7 +124,6 @@
       }).format(amount);
     }
 
-    // -------- find actual header row (handles leading blanks) --------
     function findHeaderIndex(rows) {
       for (let i = 0; i < rows.length; i++) {
         const hdr = rows[i].map(h => (h || '').trim());
@@ -129,15 +132,23 @@
       return -1;
     }
 
-    // choose a unit price per product line
-    function pickUnitPrice(row, idx) {
-      const p1 = toNumber(row[idx['Price 1']]);
-      const p2 = toNumber(row[idx['Price 2']]);
-      const p3 = toNumber(row[idx['Price 3']]);
-      if (Number.isFinite(p1)) return p1;
-      if (Number.isFinite(p2)) return p2;
-      if (Number.isFinite(p3)) return p3;
-      return NaN;
+    // Build full tier set for a row (up to three tiers)
+    function extractTiers(row, idx) {
+      const pairs = [
+        { qty: row[idx['Qty Band 1']], price: row[idx['Price 1']] },
+        { qty: row[idx['Qty Band 2']], price: row[idx['Price 2']] },
+        { qty: row[idx['Qty Band 3']], price: row[idx['Price 3']] }
+      ];
+
+      const tiers = [];
+      for (const p of pairs) {
+        const qty   = toNumber(p.qty);
+        const price = toNumber(p.price);
+        if (Number.isFinite(price)) {
+          tiers.push({ qty: Number.isFinite(qty) ? qty : null, gbpNet: price });
+        }
+      }
+      return tiers;
     }
 
     function buildProducts(rows) {
@@ -147,26 +158,22 @@
       const headers = rows[headerIndex].map(h => h.trim());
       const idx = {}; headers.forEach((h, i) => idx[h] = i);
 
-      const required = ['Product Name', 'SKU', 'Price 1', 'Price 2', 'Price 3'];
+      const required = ['Product Name', 'SKU', 'Qty Band 1', 'Price 1', 'Qty Band 2', 'Price 2', 'Qty Band 3', 'Price 3'];
       required.forEach(k => { if (idx[k] == null) console.warn('Missing column', k); });
 
-      const map = new Map(); // sku -> { sku, name, gbpNet }
+      const list = [];
       for (let r = headerIndex + 1; r < rows.length; r++) {
-        const row = rows[r];
+        const row  = rows[r];
         const sku  = (row[idx['SKU']] || '').trim();
         const name = (row[idx['Product Name']] || '').trim();
         if (!sku || !name) continue;
 
-        const price = pickUnitPrice(row, idx);
-        if (!Number.isFinite(price) || price <= 0) continue;
+        const tiers = extractTiers(row, idx);
+        if (!tiers.length) continue;
 
-        if (!map.has(sku)) map.set(sku, { sku, name, gbpNet: price });
-        else {
-          const cur = map.get(sku);
-          if (price < cur.gbpNet) cur.gbpNet = price;
-        }
+        list.push({ sku, name, tiers });
       }
-      return Array.from(map.values());
+      return list;
     }
 
     // -------- FX: fetch, cache, and graceful fallback --------
@@ -192,7 +199,7 @@
       rateInfo.textContent = `FX base GBP · rate date ${fxRates.date}`;
     }
 
-    function computeDisplayPrice(gbpNet, currency, vatMode) {
+    function convertTierAmount(gbpNet, currency, vatMode) {
       const rate = currency === 'GBP' ? 1 : fxRates?.rates?.[currency];
       if (!rate) throw new Error('Missing FX rate for ' + currency);
       const buffered = rate * (1 + FX_BUFFER);
@@ -209,13 +216,19 @@
       products
         .filter(p => !q || p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
         .forEach(p => {
-          let amount;
-          try { amount = computeDisplayPrice(p.gbpNet, currency, vatMode); } catch { amount = NaN; }
           const tr = document.createElement('tr');
+
+          // Build tier HTML
+          const tiersHtml = p.tiers.map(t => {
+            const amt = convertTierAmount(t.gbpNet, currency, vatMode);
+            const qtyLabel = t.qty ? `${t.qty}+` : `Tier`;
+            return `<div class="tier"><span class="qty pill">${qtyLabel}</span><span class="amt">${formatMoney(amt, currency)}</span></div>`;
+          }).join('');
+
           tr.innerHTML = `
             <td>${p.sku}</td>
             <td>${p.name}</td>
-            <td class="num">${isNaN(amount) ? '-' : formatMoney(amount, currency)}</td>
+            <td class="num"><div class="tiers">${tiersHtml}</div></td>
           `;
           tbody.appendChild(tr);
         });
@@ -232,9 +245,8 @@
         if (!products.length) throw new Error('CSV parsed but no products — check headers and price columns');
 
         // 2) Load FX (if fails, fall back to GBP only)
-        try {
-          await loadRates();
-        } catch (fxErr) {
+        try { await loadRates(); }
+        catch (fxErr) {
           console.warn('FX unavailable, falling back to GBP only:', fxErr);
           currencySelect.value = 'GBP';
           rateInfo.textContent = 'FX unavailable — showing GBP only';
