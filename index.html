@@ -1,4 +1,29 @@
 
+// Was:
+const CSV_FILE   = 'price-list.csv';
+
+// Change to (explicit relative path):
+const CSV_FILE   = './price-list.csv';
+
+<script>
+  async function showCsvFetchStatus() {
+    try {
+      const url = new URL(location.href);
+      const base = url.origin + url.pathname.replace(/\/$/, '');
+      const testUrl = base + '/' + CSV_FILE;
+      const r = await fetch(testUrl);
+      const msg = `Debug: GET ${testUrl} → ${r.status}`;
+      console.log(msg);
+      const dbg = document.createElement('div');
+      dbg.style.cssText = 'margin:8px 0;color:#666;font-size:.9rem';
+      dbg.textContent = msg + (r.ok ? ' (OK)' : ' (Check file path/name)');
+      document.querySelector('header').appendChild(dbg);
+    } catch (e) {
+      console.error('Debug fetch error:', e);
+    }
+  }
+</script>
+
 <!doctype html>
 <html lang="en">
 <head>
