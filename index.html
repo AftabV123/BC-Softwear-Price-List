@@ -5,7 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Multi‑Currency Price List</title>
- <!-- Load your stylesheet -->
+
+  <!-- Load your BC SoftWear–aligned stylesheet -->
   styles.css
 </head>
 <body>
@@ -57,6 +58,12 @@
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals
       });
+    }
+
+    // Optional: currency-specific rounding (add more rules if needed)
+    function roundFor(cur, amount) {
+      if (cur === 'AED' || cur === 'JPY') return Math.round(amount); // whole units
+      return Number(amount.toFixed(2)); // default 2dp
     }
 
     // ---------------- App state ----------------
@@ -123,7 +130,7 @@
     }
 
     // Simple CSV parser (works for simple CSV without quoted commas).
-    // If your product names contain commas, ask me and I’ll switch this to a quoted-CSV parser.
+    // If your product names contain commas, I can switch this to a quoted-CSV parser for you.
     function csvToJson(csv) {
       const lines = csv.trim().split(/\r?\n/);
       if (!lines.length) return [];
@@ -162,11 +169,10 @@
       // Download CSV of the rendered table
       document.getElementById('download').onclick = () => {
         const cur  = document.getElementById('currency').value || 'GBP';
-        const rows = state.data.map(r => [
-          r.ID, r.Name, r.SKU,
-          fmt(r.Price_GBP),
-          fmt(r.Price_GBP * (state.rates[cur] || 1))
-        ]);
+        const rows = state.data.map(r => {
+          const conv = roundFor(cur, r.Price_GBP * (state.rates[cur] || 1));
+          return [r.ID, r.Name, r.SKU, fmt(r.Price_GBP), fmt(conv)];
+        });
         const csvOut = ['ID,Name,SKU,GBP,' + cur]
           .concat(rows.map(x => x.join(',')))
           .join('\n');
@@ -183,19 +189,8 @@
       document.getElementById('dynHead').textContent = `Converted (${cur})`;
 
       const tbody = document.querySelector('#prices tbody');
-      tbody.innerHTML = state.data.map(r => `
-        <tr>
-          <td>${r.ID}</td>
-          <td>${r.Name}</td>
-          <td>${r.SKU}</td>
-          <td>£${fmt(r.Price_GBP)}</td>
-          <td>${fmt(r.Price_GBP * (state.rates[cur] || 1))} ${cur}</td>
-        </tr>
-      `).join('');
-    }
-
-    // ---------------- Kick-off ----------------
-    load();
-  </script>
-</body>
-</html>
+      tbody.innerHTML = state.data.map(r => {
+        const conv = roundFor(cur, r.Price_GBP * (state.rates[cur] || 1));
+        return `
+          <tr>
+            <td data-label="ID">${r.ID}</td>
