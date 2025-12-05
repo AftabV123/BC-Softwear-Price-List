@@ -1,0 +1,14 @@
+
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; color: #222; }
+header { display: grid; gap: 12px; }
+h1 { margin: 0; }
+.controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.muted { color: #666; font-size: 0.9rem; }
+input[type="search"] { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
+select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+th, td { border-bottom: 1px solid #eee; padding: 10px; }
+th.num, td.num { text-align: right; }
+tr:hover { background: #fafafa; }
+.notes { margin-top: 12px; }
+footer { margin-top: 16px; color: #666; }
