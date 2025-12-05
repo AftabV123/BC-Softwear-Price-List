@@ -1,31 +1,23 @@
 
 /* ===============================
    BC SoftWear-inspired Stylesheet
-   ===============================
+   =============================== */
 
-   Design intent:
-   - Calm, premium aesthetic with soft neutrals and deep navy accents
-   - Clear hierarchy, ample spacing, easy scanning
-   - Subtle borders, rounded corners, accessible contrast
-*/
-
-/* ---------- CSS Variables (palette & spacing) ---------- */
 :root {
-  /* Neutrals (inspired by BC SoftWear 'Pebble' + warm greys) */
-  --color-bg: #FAF9F7;        /* very soft off-white background */
-  --color-surface: #FFFFFF;    /* card/table background */
-  --color-pebble: #D8C8B8;     /* warm neutral 'Pebble' accent (approx.) */
-  --color-stone-600: #6F6B65;  /* mid grey for secondary text */
-  --color-stone-800: #2E2C29;  /* primary text (dark neutral) */
+  /* Neutrals (soft, warm) */
+  --color-bg: #FAF9F7;
+  --color-surface: #FFFFFF;
+  --color-pebble: #D8C8B8;
+  --color-stone-600: #6F6B65;
+  --color-stone-800: #2E2C29;
 
-  /* Brand accent: deep navy for CTAs/links */
-  --color-navy: #103557;       /* rich navy accent (approx. site vibe) */
-  --color-navy-hover: #0C2A45; /* darker hover state */
+  /* Deep navy accent */
+  --color-navy: #103557;
+  --color-navy-hover: #0C2A45;
 
-  /* Utility colors */
+  /* Utility */
   --color-border: #E3E0DA;
   --color-muted-bg: #F3F1EC;
-  --color-success: #2E7D32;
   --color-danger: #B00020;
 
   /* Spacing & radii */
@@ -38,17 +30,14 @@
   --radius-1: 6px;
   --radius-2: 10px;
 
-  /* Typography */
+  /* Type */
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-  --font-size-1: 14px;
   --font-size-2: 16px;
-  --font-size-3: 18px;
   --font-size-4: 22px;
   --font-size-5: 28px;
   --line-height: 1.4;
 }
 
-/* ---------- Base ---------- */
 html, body {
   background: var(--color-bg);
   color: var(--color-stone-800);
@@ -59,9 +48,7 @@ html, body {
   padding: 0;
 }
 
-body {
-  padding: var(--space-6);
-}
+body { padding: var(--space-6); }
 
 h1 {
   font-size: var(--font-size-5);
@@ -75,27 +62,15 @@ h1 {
   border: 1px solid var(--color-border);
   padding: var(--space-3);
   border-radius: var(--radius-1);
-  max-width: 100%;
 }
 
-/* ---------- Controls (currency + actions) ---------- */
-header {
-  margin-bottom: var(--space-5);
-}
-
+/* Controls */
+header { margin-bottom: var(--space-5); }
 .controls {
-  display: flex;
-  gap: var(--space-4);
-  align-items: center;
-  flex-wrap: wrap;
+  display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;
   margin-top: var(--space-3);
 }
-
-label {
-  font-weight: 600;
-  margin-right: var(--space-2);
-}
-
+label { font-weight: 600; margin-right: var(--space-2); }
 select {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
@@ -103,7 +78,6 @@ select {
   background: var(--color-surface);
   color: var(--color-stone-800);
 }
-
 button {
   padding: var(--space-2) var(--space-4);
   border: 1px solid var(--color-navy);
@@ -118,12 +92,9 @@ button:hover {
   background: var(--color-navy-hover);
   box-shadow: 0 2px 8px rgba(16, 53, 87, 0.25);
 }
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+button:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* ---------- Details / Overrides UI ---------- */
+/* Overrides panel */
 details {
   margin-top: var(--space-3);
   background: var(--color-surface);
@@ -131,11 +102,7 @@ details {
   border-radius: var(--radius-1);
   padding: var(--space-3);
 }
-details > summary {
-  font-weight: 600;
-  cursor: pointer;
-  outline: none;
-}
+details > summary { font-weight: 600; cursor: pointer; }
 
 .rate-inputs {
   display: grid;
@@ -143,10 +110,7 @@ details > summary {
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
-.rate-inputs label {
-  display: block;
-  font-weight: 600;
-}
+.rate-inputs label { display: block; font-weight: 600; }
 .rate-inputs input {
   margin-top: var(--space-2);
   width: 100%;
@@ -154,73 +118,49 @@ details > summary {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-1);
   background: var(--color-surface);
-  color: var(--color-stone-800);
 }
 
-/* ---------- Table ---------- */
+/* Table */
 table {
-  border-collapse: collapse;
-  width: 100%;
+  border-collapse: collapse; width: 100%;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2);
   overflow: hidden;
   box-shadow: 0 2px 10px rgba(0,0,0,0.04);
 }
-
 thead th {
   background: linear-gradient(0deg, var(--color-muted-bg), var(--color-surface));
   color: var(--color-stone-800);
   text-align: left;
   padding: var(--space-3);
   border-bottom: 1px solid var(--color-border);
-  font-size: var(--font-size-2);
 }
-
 tbody td {
   padding: var(--space-3);
   border-bottom: 1px solid var(--color-border);
   vertical-align: middle;
 }
-
-/* Right-align monetary values */
+/* Right-align numeric columns */
 th:nth-child(4), td:nth-child(4),
-th:nth-child(5), td:nth-child(5) {
-  text-align: right;
-}
+th:nth-child(5), td:nth-child(5) { text-align: right; }
+/* Zebra rows + hover */
+tbody tr:nth-child(even) { background: #FBFAF8; }
+tbody tr:hover { background: #F7F5F1; }
 
-/* Zebra striping for readability */
-tbody tr:nth-child(even) {
-  background: #FBFAF8;
-}
+/* Status */
+#status { margin-bottom: var(--space-3); }
+#status.error { color: var(--color-danger); }
 
-/* Hover row */
-tbody tr:hover {
-  background: #F7F5F1;
-}
+/* Links */
+a { color: var(--color-navy); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-/* ---------- Status / messages ---------- */
-#status {
-  margin-bottom: var(--space-3);
-}
-#status.error {
-  color: var(--color-danger);
-}
-
-/* ---------- Links ---------- */
-a {
-  color: var(--color-navy);
-  text-decoration: none;
-}
-a:hover {
-  text-decoration: underline;
-}
-
-/* ---------- Responsive tweaks ---------- */
+/* Mobile */
 @media (max-width: 640px) {
   body { padding: var(--space-4); }
   h1 { font-size: var(--font-size-4); }
-  thead { display: none; }          /* simplify table on small screens */
+  thead { display: none; }
   table, tbody, tr, td { display: block; width: 100%; }
   tbody tr { margin-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
   td { text-align: left !important; }
